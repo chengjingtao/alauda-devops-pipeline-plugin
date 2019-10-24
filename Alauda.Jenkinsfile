@@ -104,28 +104,33 @@ pipeline {
 		    }
 		}
 
-    stage('Publish') {
+    stage('Deploy to Nexus') {
       steps{
         script{
           hpiRelease.deploy()
-          hpiRelease.triggerBackendIndexing(RELEASE_VERSION)
-          hpiRelease.waitUC("alauda-devops-pipeline", RELEASE_VERSION, 15)
+					if(hpiRelease.deployToUC){
+						hpiRelease.triggerBackendIndexing(RELEASE_VERSION)
+						hpiRelease.waitUC("alauda-devops-pipeline", RELEASE_VERSION, 15)
+					}
         }
       }
     }
-    stage("Trigger Jenkins") {
+    stage("Trigger Dlivery Jenkins") {
+			when {
+				expression { hpiRelease.deliveryJenkins }
+			}
       steps {
         script {
-          hpiRelease.triggerJenkins("alauda-devops-pipeline", RELEASE_VERSION)
+          hpiRelease.triggerJenkins("alauda-devops-pipeline", "com.alauda.jenkins.plugins;${RELEASE_VERSION}")
         }
       }
     }
 
 		// after build it should start deploying
-		stage('Promoting') {
+		stage('Tag Git') {
 			// limit this stage to master only
 			when {
-				expression { GIT_BRANCH == "master" && DEBUG }
+				expression { hpiRelease.shouldTag }
 			}
 			steps {
 				script {
@@ -138,7 +143,7 @@ pipeline {
 						    """
 						def repo = "https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/${OWNER}/${REPOSITORY}.git"
 						sh "git fetch --tags ${repo}" // retrieve all tags
-						sh("git tag -a ${RELEASE_BUILD} -m 'auto add release tag by jenkins'")
+						sh("git tag -a ${hpiRelease.tag} -m 'auto add release tag by jenkins'")
 						sh("git push ${repo} --tags")
 					}
 				}
